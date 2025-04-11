@@ -1,0 +1,4 @@
+aiohttp # HTTP client/server
+aiogram # Telegram bot framework
+asyncpg # PostgreSQL client
+num2words
