@@ -201,7 +201,11 @@ class Quizes:
                 n3 = number + 3
             else:
                 n3 = number - 1
-            n4 = number + 2
+            n4 = number + random.randint(2, 5)
+            if number > 100:
+                n2 = number - random.randint(1, 3)
+                n3 = number + random.randint(10, 20)
+                n4 = number + random.randint(1, 10)
             return question, str(n1), str(n2), str(n3), str(n4)
         elif mode == 2:
             n1 = num2words.num2words(number, lang='es')
@@ -211,6 +215,10 @@ class Quizes:
             else:
                 n3 = num2words.num2words(number - 1, lang='es')
             n4 = num2words.num2words(number + 2, lang='es')
+            if number > 100:
+                n2 = num2words.num2words(number - random.randint(100, 200), lang='es')
+                n3 = num2words.num2words(number + random.randint(10, 50), lang='es')
+                n4 = num2words.num2words(number + random.randint(50, 150), lang='es')
             return number, n1, n2, n3, n4
         elif mode == 3:
             return num2words.num2words(number, lang='es')
