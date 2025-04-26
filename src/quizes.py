@@ -214,6 +214,33 @@ class TimeQuiz(Quiz):
         '23': 'de la noche'
     }
 
+    __TIMES_OF_DAY_M = {
+        '00': 'de la noche',
+        '01': 'de la madrugada',
+        '02': 'de la madrugada',
+        '03': 'de la madrugada',
+        '04': 'de la madrugada',
+        '05': 'de la madrugada',
+        '06': 'de la mañana',
+        '07': 'de la mañana',
+        '08': 'de la mañana',
+        '09': 'de la mañana',
+        '10': 'de la mañana',
+        '11': 'de la mañana',
+        '12': 'de la mañana',
+        '13': 'de la tarde',
+        '14': 'de la tarde',
+        '15': 'de la tarde',
+        '16': 'de la tarde',
+        '17': 'de la tarde',
+        '18': 'de la tarde',
+        '19': 'de la tarde',
+        '20': 'de la noche',
+        '21': 'de la noche',
+        '22': 'de la noche',
+        '23': 'de la noche'
+    }
+
     __HOURS = {
         '00': 'Son las doce',
         '01': 'Es la una',
@@ -304,7 +331,7 @@ class TimeQuiz(Quiz):
                 # convert hour to string with leading zero
                 hour = str(hour).zfill(2)
                 # create question string
-                question = f"{self.__HOURS[hour]} {self.__MINUTES[minutes]} {self.__TIMES_OF_DAY[hour]}"
+                question = f"{self.__HOURS[hour]} {self.__MINUTES[minutes]} {self.__TIMES_OF_DAY_M[hour]}"
             else:
                 # convert hour to string with leading zero
                 hour = str(correct_answer[0]).zfill(2)
