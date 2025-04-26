@@ -17,8 +17,7 @@ from aiogram.types import Message, BotCommand, KeyboardButton, ReplyKeyboardMark
 from aiogram.filters import Command, CommandStart, CommandObject
 
 from .storage import Storage
-# todo: import time quiz
-from .quizes import NumeroQuiz, DateQuiz
+from .quizes import NumeroQuiz, DateQuiz, TimeQuiz
 
 
 MESSAGE_LEVEL = """
@@ -45,8 +44,9 @@ MESSAGE_DATE_EXAMPLE = """
     Напишите дату согласно примерам:
     Вопрос: <b>Понедельник, 01.01</b>
     Ответ: <b>lunes, primero de enero</b>
-    Вопрос: <b>Вторник, 02.02</b>
-    Ответ: <b>martes, dos de febrero</b>
+    Вопрос: <b>Вторник, 11.02</b>
+    Ответ: <b>martes, once de febrero</b>
+    Не забудьте ударение где нужно!
     """
 
 MESSAGE_DATE_QUESTION = """
@@ -54,7 +54,8 @@ MESSAGE_DATE_QUESTION = """
     """
 
 MESSAGE_TIME_QUESTION = """
-    Выбирите правильное время: <b>{0}</b>
+    Выбирите правильное время:
+    <b>{0}</b>
     """
 
 MESSAGE_CORRECT = """
@@ -91,9 +92,9 @@ MESSAGE_HELP = """
     /numeros - Тренировка чисел
     /dates - Тренировка дат
     /times - Тренировка времени
+    /stop - Остановить тест
     /stats - Ваша статистика
     /clear - Сбросить прогресс
-    /stop - Остановить тест
     
     Вопросы и предложения по улучшению бота можно отправлять в Сообщество Estudiamos или Вашему куратору.
     """
@@ -112,7 +113,7 @@ class TgBot:
         self._dp = Dispatcher(bot=self._bot)
         self._numeros = NumeroQuiz(self._storage)
         self._dates =DateQuiz(self._storage)
-        # todo: add time quiz
+        self._times = TimeQuiz(self._storage)
         self._in_quiz = dict()
 
     @staticmethod
@@ -181,7 +182,9 @@ class TgBot:
         elif quiz_mode == 2:
             stats = await self._dates.get_quiz_stats(message.from_user.id)
             await self._send_current_stats(message, stats['level'], stats['correct'], stats['wrong'], stats['percent'])
-        # todo: add time quiz
+        elif quiz_mode == 3:
+            stats = await self._times.get_quiz_stats(message.from_user.id)
+            await self._send_current_stats(message, stats['level'], stats['correct'], stats['wrong'], stats['percent'])
         else:
             stats = await self._numeros.get_user_stats(message.from_user.id)
             await self._send_stats(message, stats['level'], stats['correct'], stats['wrong'], stats['percent'])
@@ -206,7 +209,8 @@ class TgBot:
             await self._numeros.stop_quiz(message.from_user.id)
         elif user_mode == 2:
             await self._dates.stop_quiz(message.from_user.id)
-        # todo: add time quiz
+        elif user_mode == 3:
+            await self._times.stop_quiz(message.from_user.id)
         self._in_quiz[message.from_user.id] = 0
         await message.answer("Тест остановлен.", reply_markup=ReplyKeyboardRemove())
 
@@ -230,7 +234,6 @@ class TgBot:
             return
         self._in_quiz[message.from_user.id] = 2
         quiz = await self._dates.start_quiz(message.from_user.id)
-        # todo: send dates question
         await self._dates_send_first_question(message, quiz['question'])
 
     async def handler_times_command(self, message: Message):
@@ -240,9 +243,9 @@ class TgBot:
         if user_mode != 0:
             await message.answer("Сначала завершите текущий тест.")
             return
-        # self._in_quiz[message.from_user.id] = 3
-        # todo: add time quiz
-        await message.answer("Тест на время еще не готов.", reply_markup=ReplyKeyboardRemove())
+        self._in_quiz[message.from_user.id] = 3
+        quiz = await self._times.start_quiz(message.from_user.id)
+        await self._times_send_first_question(message, quiz['question'])
 
     async def handler_all_messages(self, message: Message):
         if not self._check_chat_is_private(message):
@@ -275,7 +278,17 @@ class TgBot:
             else:
                 await self._dates_send_question(
                     message, quiz['result'], quiz['correct_answer'], quiz['mode'], quiz['question'])
-        # todo: add time quiz
+        elif quiz_mode == 3:
+            quiz = await self._times.process_quiz(message.from_user.id, answer)
+            if quiz['mode'] == 0:
+                self._in_quiz[message.from_user.id] = 0
+                stats = await self._times.get_quiz_stats(message.from_user.id)
+                await self._send_finish_result(
+                    message, quiz['result'], quiz['correct_answer'],
+                    stats['level'], stats['correct'], stats['wrong'], stats['percent'])
+            else:
+                await self._times_send_question(
+                    message, quiz['result'], quiz['correct_answer'], quiz['question'])
         pass
 
     @staticmethod
@@ -287,12 +300,12 @@ class TgBot:
                           description='Тренировка дат'),
             BotCommand(command='/times',
                             description='Тренировка времени'),
+            BotCommand(command='/stop',
+                       description='Остановить тест'),
             BotCommand(command='/stats',
                        description='Ваша статистика'),
             BotCommand(command='/clear',
                        description='Сбросить прогресс'),
-            BotCommand(command='/stop',
-                       description='Остановить тест'),
             BotCommand(command='/help',
                        description='Справка по работе бота'),
         ]
@@ -415,6 +428,54 @@ class TgBot:
         else:
             msg = MESSAGE_INCORRECT.format(answer)
         await message.answer(msg + MESSAGE_DATE_QUESTION.format(question), parse_mode=ParseMode.HTML, reply_markup=ReplyKeyboardRemove())
+
+    @staticmethod
+    async def _times_send_first_question(message: Message, question: tuple):
+        variants = question[1]
+        random.shuffle(variants)
+        kb = [
+            [
+                KeyboardButton(text=variants[0]),
+                KeyboardButton(text=variants[1]),
+                KeyboardButton(text=variants[2]),
+            ],
+            [
+                KeyboardButton(text=variants[3]),
+                KeyboardButton(text=variants[4]),
+                KeyboardButton(text=variants[5]),
+            ]
+        ]
+        keyword = ReplyKeyboardMarkup(
+            keyboard=kb,
+            resize_keyboard=True,
+        )
+        await message.answer(MESSAGE_TIME_QUESTION.format(question[0]), parse_mode=ParseMode.HTML, reply_markup=keyword)
+
+    @staticmethod
+    async def _times_send_question(message: Message, result: bool, answer: str, question: tuple):
+        if result:
+            msg = MESSAGE_CORRECT
+        else:
+            msg = MESSAGE_INCORRECT.format(answer)
+        variants = question[1]
+        random.shuffle(variants)
+        kb = [
+            [
+                KeyboardButton(text=variants[0]),
+                KeyboardButton(text=variants[1]),
+                KeyboardButton(text=variants[2]),
+            ],
+            [
+                KeyboardButton(text=variants[3]),
+                KeyboardButton(text=variants[4]),
+                KeyboardButton(text=variants[5]),
+            ]
+        ]
+        keyword = ReplyKeyboardMarkup(
+            keyboard=kb,
+            resize_keyboard=True,
+        )
+        await message.answer(msg + MESSAGE_TIME_QUESTION.format(question[0]), parse_mode=ParseMode.HTML, reply_markup=keyword)
 
     @staticmethod
     async def _send_finish_result(message: Message, result: bool, answer: str, level, correct, wrong, percent):

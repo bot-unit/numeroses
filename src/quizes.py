@@ -151,13 +151,176 @@ class DateQuiz(Quiz):
 
     def _check_answer(self, user_id: int, answer: str) -> tuple[bool, str]:
         quiz_answer = self._current_answer.get(user_id, "")
-        answer = answer.lower().strip().replace(' ', '').replace(',', '')
+        answer = answer.lower().strip().replace(' ', '').replace(',', '').replace('el', '')
         if answer == quiz_answer.replace(' ', '').replace(',', ''):
             return True, quiz_answer
         return False, quiz_answer
 
     async def _finish_quiz(self, user_id: int):
         # date quiz finish, not update stats or user level
+        # do nothing
+        pass
+
+# Quiz for time in Spanish
+class TimeQuiz(Quiz):
+
+    ALL_MINUTES = ('00', '05', '10', '15', '20', '25', '30', '35', '40', '45', '50', '55')
+    WITH_MENOS = ('35', '40', '45', '50', '55')
+
+    __TIMES_PUNTO = {
+        '00': 'Es medianoche',
+        '12': 'Es mediodía',
+    }
+
+    __MINUTES = {
+        '00': 'en punto',
+        '05': 'y cinco',
+        '10': 'y diez',
+        '15': 'y cuarto',
+        '20': 'y veinte',
+        '25': 'y veinticinco',
+        '30': 'y media',
+        '35': 'menos veinticinco',
+        '40': 'menos veinte',
+        '45': 'menos cuarto',
+        '50': 'menos diez',
+        '55': 'menos cinco'
+    }
+
+    __TIMES_OF_DAY = {
+        '00': 'de la madrugada',
+        '01': 'de la madrugada',
+        '02': 'de la madrugada',
+        '03': 'de la madrugada',
+        '04': 'de la madrugada',
+        '05': 'de la mañana',
+        '06': 'de la mañana',
+        '07': 'de la mañana',
+        '08': 'de la mañana',
+        '09': 'de la mañana',
+        '10': 'de la mañana',
+        '11': 'de la mañana',
+        '12': 'de la tarde',
+        '13': 'de la tarde',
+        '14': 'de la tarde',
+        '15': 'de la tarde',
+        '16': 'de la tarde',
+        '17': 'de la tarde',
+        '18': 'de la tarde',
+        '19': 'de la noche',
+        '20': 'de la noche',
+        '21': 'de la noche',
+        '22': 'de la noche',
+        '23': 'de la noche'
+    }
+
+    __HOURS = {
+        '00': 'Son las doce',
+        '01': 'Es la una',
+        '02': 'Son las dos',
+        '03': 'Son las tres',
+        '04': 'Son las cuatro',
+        '05': 'Son las cinco',
+        '06': 'Son las seis',
+        '07': 'Son las siete',
+        '08': 'Son las ocho',
+        '09': 'Son las nueve',
+        '10': 'Son las diez',
+        '11': 'Son las once',
+        '12': 'Son las doce',
+        '13': 'Es la una',
+        '14': 'Son las dos',
+        '15': 'Son las tres',
+        '16': 'Son las cuatro',
+        '17': 'Son las cinco',
+        '18': 'Son las seis',
+        '19': 'Son las siete',
+        '20': 'Son las ocho',
+        '21': 'Son las nueve',
+        '22': 'Son las diez',
+        '23': 'Son las once'
+    }
+
+    def __init__(self, storage):
+        super().__init__(storage)
+
+    async def start_quiz(self, user_id: int) -> dict:
+        user_level = await self.load_user_level(user_id)
+        self._current_quiz[user_id] = 1
+        self.create_quiz_stats(user_id)
+        return {'mode': 1, 'question': self._create_question(user_id, 1), 'level': user_level}
+
+    async def stop_quiz(self, user_id: int):
+        # do nothing
+        pass
+
+    async def process_quiz(self, user_id: int, answer: str) -> dict:
+        # check answer
+        res, right_answer = self._check_answer(user_id, answer)
+        if res:
+            self.update_quiz_stats(user_id, True)
+        else:
+            self.update_quiz_stats(user_id, False)
+        # increase quiz number
+        self._current_quiz[user_id] += 1
+        if self._current_quiz[user_id] > 10:  # max 10 questions for time quiz
+            # finish quiz
+            await self._finish_quiz(user_id)
+            return {'mode': 0, 'result': res, 'correct_answer': right_answer, 'question': None}
+        # get new question
+        question = self._create_question(user_id, 1)
+        return {'mode': 1, 'result': res, 'correct_answer': right_answer, 'question': question}
+
+    def _generate_times(self):
+        hour_a = random.randint(0, 11)
+        hour_b = hour_a + 12
+        minutes = random.sample(self.ALL_MINUTES, 3)
+        return [
+            (hour_a, minutes[0]), (hour_a, minutes[1]), (hour_a, minutes[2]),
+            (hour_b, minutes[0]), (hour_b, minutes[1]), (hour_b, minutes[2])]
+
+    def _create_question(self, user_id: int, mode: int = 1) -> tuple:
+        times = self._generate_times()
+        # choose random correct answer
+        correct_answer = random.choice(times)
+        # convert times to strings
+        answers = [str(x[0]).zfill(2) + ':' + x[1] for x in times]
+        # convert correct answer to string
+        correct_answer_str = str(correct_answer[0]).zfill(2) + ':' + correct_answer[1]
+        # save correct answer
+        self._current_answer[user_id] = correct_answer_str
+        # create question string
+        # check if correct answer is 00:00 or 12:00
+        if correct_answer[0] == 0 and correct_answer[1] == '00':
+            question = self.__TIMES_PUNTO['00']
+        elif correct_answer[0] == 12 and correct_answer[1] == '00':
+            question = self.__TIMES_PUNTO['12']
+        else:
+            minutes = correct_answer[1]
+            # check if minute is in WITH_MENOS
+            if minutes in self.WITH_MENOS:
+                # add one our
+                hour = correct_answer[0] + 1 if correct_answer[0] < 23 else 0
+                # convert hour to string with leading zero
+                hour = str(hour).zfill(2)
+                # create question string
+                question = f"{self.__HOURS[hour]} {self.__MINUTES[minutes]} {self.__TIMES_OF_DAY[hour]}"
+            else:
+                # convert hour to string with leading zero
+                hour = str(correct_answer[0]).zfill(2)
+                # create question string
+                question = f"{self.__HOURS[hour]} {self.__MINUTES[minutes]} {self.__TIMES_OF_DAY[hour]}"
+        return question, answers
+
+    def _check_answer(self, user_id: int, answer: str) -> tuple[bool, str]:
+        quiz_answer = self._current_answer.get(user_id, "")
+        answer = answer.lower().strip()
+        if answer == quiz_answer:
+            return True, quiz_answer
+        return False, quiz_answer
+
+    async def _finish_quiz(self, user_id: int):
+        # time quiz finish, not update stats or user level
         # do nothing
         pass
 
