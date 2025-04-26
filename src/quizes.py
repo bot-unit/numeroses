@@ -98,7 +98,7 @@ class DateQuiz(Quiz):
     ]
 
     __WEEK_DAYS_RU = [
-        'понедельник', 'вторник', 'среда', 'четверг', 'пятница', 'суббота', 'воскресенье'
+        'Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье'
     ]
 
     __MONTHS_LENGTH = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
@@ -191,10 +191,10 @@ class NumeroQuiz(Quiz):
         if mode == 0:
             # finish quiz
             await self._finish_quiz(user_id)
-            return {'mode': 0, 'result': res, 'right_answer': right_answer, 'question': None}
+            return {'mode': 0, 'result': res, 'correct_answer': right_answer, 'question': None}
         # get new question
         question = self._create_question(user_id, mode)
-        return {'mode': mode, 'result': res, 'right_answer': right_answer, 'question': question}
+        return {'mode': mode, 'result': res, 'correct_answer': right_answer, 'question': question}
 
     @staticmethod
     def _get_quiz_mode(user_level: int = 0, quiz_number: int = 1):

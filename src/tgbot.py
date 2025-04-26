@@ -17,7 +17,8 @@ from aiogram.types import Message, BotCommand, KeyboardButton, ReplyKeyboardMark
 from aiogram.filters import Command, CommandStart, CommandObject
 
 from .storage import Storage
-from .quizes import NumeroQuiz
+# todo: import time quiz
+from .quizes import NumeroQuiz, DateQuiz
 
 
 MESSAGE_LEVEL = """
@@ -38,6 +39,22 @@ MESSAGE_QUESTION_3 = """
 
 MESSAGE_QUESTION_4 = """
     Напишите заданное число прописью: <b>{0}</b>
+    """
+
+MESSAGE_DATE_EXAMPLE = """
+    Напишите дату согласно примерам:
+    Вопрос: <b>Понедельник, 01.01</b>
+    Ответ: <b>lunes, primero de enero</b>
+    Вопрос: <b>Вторник, 02.02</b>
+    Ответ: <b>martes, dos de febrero</b>
+    """
+
+MESSAGE_DATE_QUESTION = """
+    Напишите дату: <b>{0}</b>
+    """
+
+MESSAGE_TIME_QUESTION = """
+    Выбирите правильное время: <b>{0}</b>
     """
 
 MESSAGE_CORRECT = """
@@ -64,13 +81,38 @@ MESSAGE_STATS_CURRENT = """
     Процент правильных ответов: <i>{3:.2f}%</i>
     """
 
-class TgBot:
+MESSAGE_HELP = """
+    <b>Испанские числительные</b>
+    Бот позволяет вам тренировать испанские числительные.
+    Выполняя задания, следуйте указаниям бота.
+    
+    <b>Доступные команды:</b>
+    /help - Справка
+    /numeros - Тренировка чисел
+    /dates - Тренировка дат
+    /times - Тренировка времени
+    /stats - Ваша статистика
+    /clear - Сбросить прогресс
+    /stop - Остановить тест
+    
+    Вопросы и предложения по улучшению бота можно отправлять в Сообщество Estudiamos или Вашему куратору.
+    """
 
+class TgBot:
+    """
+    Quizes:
+    0 - не в тесте
+    1 - в тесте Numero
+    2 - в тесте Date
+    3 - в тесте Time
+    """
     def __init__(self, token: str, host: str, port: int, user: str, password: str, database: str):
         self._storage = Storage(host, port, user, password, database)
         self._bot = Bot(token=token, default=DefaultBotProperties())
         self._dp = Dispatcher(bot=self._bot)
-        self._quiz = NumeroQuiz(self._storage)
+        self._numeros = NumeroQuiz(self._storage)
+        self._dates =DateQuiz(self._storage)
+        # todo: add time quiz
         self._in_quiz = dict()
 
     @staticmethod
@@ -106,9 +148,10 @@ class TgBot:
     def register_router(self):
         router = Router()
         router.message.register(self.start_handler, CommandStart())
-        router.message.register(self.handler_id, Command(commands=['id']))
         # user commands
-        router.message.register(self.handler_go_command, Command(commands=['go']))
+        router.message.register(self.handler_numeros_command, Command(commands=['numeros']))
+        router.message.register(self.handler_dates_command, Command(commands=['dates']))
+        router.message.register(self.handler_times_command, Command(commands=['times']))
         router.message.register(self.handler_help_command, Command(commands=['help']))
         router.message.register(self.handler_stats_command, Command(commands=['stats']))
         router.message.register(self.handler_clear_command, Command(commands=['clear']))
@@ -120,7 +163,7 @@ class TgBot:
     async def start_handler(self, message: Message, command: CommandObject):
         if not self._check_chat_is_private(message):
             return
-        await self._quiz.register_user(message.from_user.id)
+        await self._numeros.register_user(message.from_user.id)
         await self._send_help(message)
 
     async def handler_help_command(self, message: Message):
@@ -128,75 +171,122 @@ class TgBot:
             return
         await self._send_help(message)
 
-    async def handler_go_command(self, message: Message):
-        if not self._check_chat_is_private(message):
-            return
-        user_mode = self._in_quiz.get(message.from_user.id)
-        if user_mode is not None:
-            await message.answer("Вы уже находитесь в тесте.")
-            return
-        self._in_quiz[message.from_user.id] = 1
-        quiz = await self._quiz.start_quiz(message.from_user.id)
-        await self._send_first_question(message, quiz['mode'], quiz['question'], quiz['level'])
-
     async def handler_stats_command(self, message: Message):
         if not self._check_chat_is_private(message):
             return
-        user_mode = self._in_quiz.get(message.from_user.id)
-        if user_mode is None:
-            stats = await self._quiz.get_user_stats(message.from_user.id)
-            await self._send_stats(message, stats['level'], stats['correct'], stats['wrong'], stats['percent'])
-        else:
-            stats = await self._quiz.get_current_user_stats(message.from_user.id)
+        quiz_mode = self._in_quiz.get(message.from_user.id, 0)
+        if quiz_mode == 1:
+            stats = await self._numeros.get_quiz_stats(message.from_user.id)
             await self._send_current_stats(message, stats['level'], stats['correct'], stats['wrong'], stats['percent'])
+        elif quiz_mode == 2:
+            stats = await self._dates.get_quiz_stats(message.from_user.id)
+            await self._send_current_stats(message, stats['level'], stats['correct'], stats['wrong'], stats['percent'])
+        # todo: add time quiz
+        else:
+            stats = await self._numeros.get_user_stats(message.from_user.id)
+            await self._send_stats(message, stats['level'], stats['correct'], stats['wrong'], stats['percent'])
 
     async def handler_clear_command(self, message: Message):
         if not self._check_chat_is_private(message):
             return
-        user_mode = self._in_quiz.get(message.from_user.id)
-        if user_mode is not None:
-            await message.answer("Вы находитесь в тесте. Чтобы очистить статистику, сначала завершите тест.")
+        user_mode = self._in_quiz.get(message.from_user.id, 0)
+        if user_mode != 0:
+            await message.answer("Чтобы очистить статистику, сначала завершите тест.")
             return
-        await self._quiz.clear_user_stats(message.from_user.id)
-        await message.answer("Статистика очищена. Чтобы начать заново, введите /go", reply_markup=ReplyKeyboardRemove())
+        await self._numeros.clear_user_stats(message.from_user.id)
+        await message.answer("Статистика очищена.", reply_markup=ReplyKeyboardRemove())
 
     async def handler_stop_command(self, message: Message):
         if not self._check_chat_is_private(message):
             return
-        user_mode = self._in_quiz.get(message.from_user.id)
-        if user_mode is None:
+        user_mode = self._in_quiz.get(message.from_user.id, 0)
+        if user_mode == 0:
             return
-        await self._quiz.stop_quiz(message.from_user.id)
-        self._in_quiz[message.from_user.id] = None
-        await message.answer("Тест остановлен. Чтобы начать заново, введите /go", reply_markup=ReplyKeyboardRemove())
+        elif user_mode == 1:
+            await self._numeros.stop_quiz(message.from_user.id)
+        elif user_mode == 2:
+            await self._dates.stop_quiz(message.from_user.id)
+        # todo: add time quiz
+        self._in_quiz[message.from_user.id] = 0
+        await message.answer("Тест остановлен.", reply_markup=ReplyKeyboardRemove())
+
+    async def handler_numeros_command(self, message: Message):
+        if not self._check_chat_is_private(message):
+            return
+        user_mode = self._in_quiz.get(message.from_user.id, 0)
+        if user_mode != 0:
+            await message.answer("Сначала завершите текущий тест.")
+            return
+        self._in_quiz[message.from_user.id] = 1
+        quiz = await self._numeros.start_quiz(message.from_user.id)
+        await self._numeros_send_first_question(message, quiz['mode'], quiz['question'], quiz['level'])
+
+    async def handler_dates_command(self, message: Message):
+        if not self._check_chat_is_private(message):
+            return
+        user_mode = self._in_quiz.get(message.from_user.id, 0)
+        if user_mode != 0:
+            await message.answer("Сначала завершите текущий тест.")
+            return
+        self._in_quiz[message.from_user.id] = 2
+        quiz = await self._dates.start_quiz(message.from_user.id)
+        # todo: send dates question
+        await self._dates_send_first_question(message, quiz['question'])
+
+    async def handler_times_command(self, message: Message):
+        if not self._check_chat_is_private(message):
+            return
+        user_mode = self._in_quiz.get(message.from_user.id, 0)
+        if user_mode != 0:
+            await message.answer("Сначала завершите текущий тест.")
+            return
+        # self._in_quiz[message.from_user.id] = 3
+        # todo: add time quiz
+        await message.answer("Тест на время еще не готов.", reply_markup=ReplyKeyboardRemove())
 
     async def handler_all_messages(self, message: Message):
         if not self._check_chat_is_private(message):
             return
-        user_mode = self._in_quiz.get(message.from_user.id)
-        if user_mode is None:
+        quiz_mode = self._in_quiz.get(message.from_user.id, 0)
+        if quiz_mode == 0:
             return
         answer = message.text.strip().lower()
         if len(answer) == 0:
             return
-        quiz = await self._quiz.process_answer(message.from_user.id, answer)
-        if quiz['mode'] == 0:
-            self._in_quiz[message.from_user.id] = None
-            stats = await self._quiz.get_current_user_stats(message.from_user.id)
-            await self._send_finish_result(message, quiz['result'], quiz['correct_answer'], stats['level'], stats['correct'], stats['wrong'], stats['percent'])
-        else:
-            await self._send_question(message, quiz['result'], quiz['correct_answer'], quiz['mode'], quiz['question'])
-
-    async def handler_id(self, message: Message):
-        if not self._check_chat_is_private(message):
-            return
-        await message.answer(f"Ваш ID: {message.from_user.id}")
+        if quiz_mode == 1:
+            quiz = await self._numeros.process_quiz(message.from_user.id, answer)
+            if quiz['mode'] == 0:
+                self._in_quiz[message.from_user.id] = 0
+                stats = await self._numeros.get_quiz_stats(message.from_user.id)
+                await self._send_finish_result(
+                    message, quiz['result'], quiz['correct_answer'],
+                    stats['level'], stats['correct'], stats['wrong'], stats['percent'])
+            else:
+                await self._numeros_send_question(
+                    message, quiz['result'], quiz['correct_answer'], quiz['mode'], quiz['question'])
+        elif quiz_mode == 2:
+            quiz = await self._dates.process_quiz(message.from_user.id, answer)
+            if quiz['mode'] == 0:
+                self._in_quiz[message.from_user.id] = 0
+                stats = await self._dates.get_quiz_stats(message.from_user.id)
+                await self._send_finish_result(
+                    message, quiz['result'], quiz['correct_answer'],
+                    stats['level'], stats['correct'], stats['wrong'], stats['percent'])
+            else:
+                await self._dates_send_question(
+                    message, quiz['result'], quiz['correct_answer'], quiz['mode'], quiz['question'])
+        # todo: add time quiz
+        pass
 
     @staticmethod
     async def _set_main_menu(bot: Bot):
         main_menu_commands = [
-            BotCommand(command='/go',
-                       description='Запуск теста'),
+            BotCommand(command='/numeros',
+                       description='Тренировка чисел'),
+            BotCommand(command='/dates',
+                          description='Тренировка дат'),
+            BotCommand(command='/times',
+                            description='Тренировка времени'),
             BotCommand(command='/stats',
                        description='Ваша статистика'),
             BotCommand(command='/clear',
@@ -210,21 +300,10 @@ class TgBot:
 
     @staticmethod
     async def _send_help(message: Message):
-        msg_help = """
-        <b>Испанские числительные</b>
-        Бот позволяет вам изучать испанские числительные.
-        Выполняя задания, следуйте указаниям бота.
-        <b>Доступные команды:</b>
-        /help - Справка
-        /go - Запуск теста
-        /stats - Ваша статистика
-        /clear - Сбросить прогресс
-        /stop - Остановить тест
-        """
-        await message.answer(msg_help, parse_mode=ParseMode.HTML)
+        await message.answer(MESSAGE_HELP, parse_mode=ParseMode.HTML)
 
     @staticmethod
-    async def _send_first_question(message: Message, mode: int, question: str | tuple, level: int):
+    async def _numeros_send_first_question(message: Message, mode: int, question: str | tuple, level: int):
         msg = MESSAGE_LEVEL.format(level)
         if mode == 1:
             variants = list(question[1:])
@@ -273,7 +352,7 @@ class TgBot:
         pass
 
     @staticmethod
-    async def _send_question(message: Message, result: bool, answer: str, mode: int, question: str | tuple):
+    async def _numeros_send_question(message: Message, result: bool, answer: str, mode: int, question: str | tuple):
         if result:
             msg = MESSAGE_CORRECT
         else:
@@ -323,6 +402,19 @@ class TgBot:
         elif mode == 4:
             await message.answer(msg + MESSAGE_QUESTION_4.format(question), parse_mode=ParseMode.HTML, reply_markup=ReplyKeyboardRemove())
         pass
+
+    @staticmethod
+    async def _dates_send_first_question(message: Message, question: str):
+        await message.answer(MESSAGE_DATE_EXAMPLE, parse_mode=ParseMode.HTML)
+        await message.answer(MESSAGE_DATE_QUESTION.format(question), parse_mode=ParseMode.HTML, reply_markup=ReplyKeyboardRemove())
+
+    @staticmethod
+    async def _dates_send_question(message: Message, result: bool, answer: str, mode: int, question: str):
+        if result:
+            msg = MESSAGE_CORRECT
+        else:
+            msg = MESSAGE_INCORRECT.format(answer)
+        await message.answer(msg + MESSAGE_DATE_QUESTION.format(question), parse_mode=ParseMode.HTML, reply_markup=ReplyKeyboardRemove())
 
     @staticmethod
     async def _send_finish_result(message: Message, result: bool, answer: str, level, correct, wrong, percent):
