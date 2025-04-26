@@ -448,7 +448,7 @@ class NumeroQuiz(Quiz):
             else:
                 n3 = num2words.num2words(number - 1, lang='es')
             n4 = num2words.num2words(number + 2, lang='es')
-            if number > 100:
+            if number > 200:
                 n2 = num2words.num2words(number - random.randint(100, 200), lang='es')
                 n3 = num2words.num2words(number + random.randint(10, 50), lang='es')
                 n4 = num2words.num2words(number + random.randint(50, 150), lang='es')

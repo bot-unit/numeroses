@@ -54,7 +54,7 @@ MESSAGE_DATE_QUESTION = """
     """
 
 MESSAGE_TIME_QUESTION = """
-    Выбирите правильное время:
+    Выберите правильное время:
     <b>{0}</b>
     """
 
