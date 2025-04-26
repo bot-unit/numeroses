@@ -86,7 +86,7 @@ class Quiz(abc.ABC):
     async def process_quiz(self, user_id: int, answer: str) -> dict:
         pass
 
-
+# Quiz for dates in Spanish
 class DateQuiz(Quiz):
     __MONTHS = [
         'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
@@ -125,7 +125,7 @@ class DateQuiz(Quiz):
             self.update_quiz_stats(user_id, False)
         # increase quiz number
         self._current_quiz[user_id] += 1
-        if self._current_quiz[user_id] > 5:
+        if self._current_quiz[user_id] > 5: # max 5 questions for date quiz
             # finish quiz
             await self._finish_quiz(user_id)
             return {'mode': 0, 'result': res, 'correct_answer': right_answer, 'question': None}
@@ -161,8 +161,7 @@ class DateQuiz(Quiz):
         # do nothing
         pass
 
-
-
+# Quiz for numbers in Spanish
 class NumeroQuiz(Quiz):
 
     def __init__(self, storage):
@@ -171,7 +170,6 @@ class NumeroQuiz(Quiz):
     async def start_quiz(self, user_id: int) -> dict:
         user_level = await self.load_user_level(user_id)
         self._current_quiz[user_id] = 1
-        self.clear_quiz(user_id)
         self.create_quiz_stats(user_id)
         return {'mode': 1, 'question': self._create_question(user_id, 1), 'level': user_level}
 
@@ -181,11 +179,11 @@ class NumeroQuiz(Quiz):
 
     async def process_quiz(self, user_id: int, answer: str) -> dict:
         # check answer
-        res, correct_answer = await self._check_answer(user_id, answer)
+        res, right_answer = self._check_answer(user_id, answer)
         if res:
-            self._user_stats[user_id]['correct'] += 1
+            self.update_quiz_stats(user_id, True)
         else:
-            self._user_stats[user_id]['wrong'] += 1
+            self.update_quiz_stats(user_id, False)
         # increase quiz number
         self._current_quiz[user_id] += 1
         # get new current mode
@@ -193,54 +191,10 @@ class NumeroQuiz(Quiz):
         if mode == 0:
             # finish quiz
             await self._finish_quiz(user_id)
-            return {'mode': 0, 'result': res, 'correct_answer': correct_answer, 'question': None}
+            return {'mode': 0, 'result': res, 'right_answer': right_answer, 'question': None}
         # get new question
         question = self._create_question(user_id, mode)
-        return {'mode': mode, 'result': res, 'correct_answer': correct_answer, 'question': question}
-
-    async def _finish_quiz(self, user_id: int):
-        correct = self._user_stats[user_id]['correct']
-        wrong = self._user_stats[user_id]['wrong']
-        if wrong == 0:
-            await self.storage.increase_user_level(user_id)
-            self._user_level[user_id] += 1
-        elif wrong >= correct:
-            await self.storage.decrease_user_level(user_id)
-            self._user_level[user_id] -= 1 if self._user_level[user_id] > 0 else 0
-        await self.storage.update_user_stats(user_id, correct, wrong)
-        self._clear_cache(user_id)
-
-    async def _check_answer(self, user_id: int, answer: str) -> tuple[bool, str]:
-        question_number = self._current_quiz.get(user_id, 0)
-        user_level = self._user_level.get(user_id, 0)
-        current_mode = self._get_quiz_mode(user_level, question_number)
-        if current_mode == 1 or current_mode == 3:
-            current_answer = self._current_answer.get(user_id, 0)
-            try:
-                answer = int(answer)
-                if answer == current_answer:
-                    return True, str(current_answer)
-            except ValueError:
-                pass
-            return False, str(current_answer)
-        elif current_mode == 2 or current_mode == 4:
-            current_answer = num2words.num2words(self._current_answer.get(user_id, 0), lang='es')
-            if answer == current_answer:
-                return True, current_answer
-            return False, current_answer
-        return False, ""
-
-
-
-    @staticmethod
-    def _new_quiz_number(user_level: int = 0):
-        if user_level <= 1:
-            return random.randint(1, 20)
-        elif user_level <= 4:
-            return random.randint(1, 100)
-        elif user_level <= 7:
-            return random.randint(1, 1000)
-        return random.randint(1001, 9999)
+        return {'mode': mode, 'result': res, 'right_answer': right_answer, 'question': question}
 
     @staticmethod
     def _get_quiz_mode(user_level: int = 0, quiz_number: int = 1):
@@ -288,6 +242,16 @@ class NumeroQuiz(Quiz):
             return 4
         return 0  # finish
 
+    @staticmethod
+    def _new_quiz_number(user_level: int = 0):
+        if user_level <= 1:
+            return random.randint(1, 20)
+        elif user_level <= 4:
+            return random.randint(1, 100)
+        elif user_level <= 7:
+            return random.randint(1, 1000)
+        return random.randint(1001, 9999)
+
     def _create_question(self, user_id: int, mode: int = 1) -> str | tuple | None:
         """
         Modes:
@@ -331,3 +295,34 @@ class NumeroQuiz(Quiz):
         elif mode == 4:
             return str(number)
         return None
+
+    def _check_answer(self, user_id: int, answer: str) -> tuple[bool, str]:
+        question_number = self._current_quiz.get(user_id, 0)
+        user_level = self._user_level.get(user_id, 0)
+        current_mode = self._get_quiz_mode(user_level, question_number)
+        if current_mode == 1 or current_mode == 3:
+            current_answer = self._current_answer.get(user_id, 0)
+            try:
+                answer = int(answer)
+                if answer == current_answer:
+                    return True, str(current_answer)
+            except ValueError:
+                pass
+            return False, str(current_answer)
+        elif current_mode == 2 or current_mode == 4:
+            current_answer = num2words.num2words(self._current_answer.get(user_id, 0), lang='es')
+            if answer == current_answer:
+                return True, current_answer
+            return False, current_answer
+        return False, ""
+
+    async def _finish_quiz(self, user_id: int):
+        correct = self._user_stats[user_id]['correct']
+        wrong = self._user_stats[user_id]['wrong']
+        if wrong == 0:
+            await self.storage.increase_user_level(user_id)
+            self._user_level[user_id] += 1
+        elif wrong >= correct:
+            await self.storage.decrease_user_level(user_id)
+            self._user_level[user_id] -= 1 if self._user_level[user_id] > 0 else 0
+        await self.storage.update_user_stats(user_id, correct, wrong)
