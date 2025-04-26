@@ -6,23 +6,52 @@
     
 """
 
+import abc
 import random
 
 import num2words
 
-class Quizes:
+class Quiz(abc.ABC):
 
     def __init__(self, storage):
         self.storage = storage
-        # cached
         self._current_answer = dict()
         self._current_quiz = dict()
-        self._user_level = dict()
         self._user_stats = dict()
+        self._user_level = dict()
 
     async def register_user(self, user_id: int):
         if not await self.storage.is_user_exists(user_id):
             await self.storage.insert_user(user_id)
+
+    async def load_user_level(self, user_id: int):
+        user_level = await self.storage.get_user_level(user_id)
+        if user_level is None:
+            await self.storage.insert_user(user_id)
+            self._user_level[user_id] = 0
+        else:
+            self._user_level[user_id] = user_level
+        return self._user_level[user_id]
+
+    async def clear_user_stats(self, user_id: int):
+        await self.storage.clear_user_stats(user_id)
+
+    def create_quiz_stats(self, user_id: int):
+        self._user_stats[user_id] = {
+            'correct': 0,
+            'wrong': 0,
+        }
+
+    def update_quiz_stats(self, user_id: int, correct: bool):
+        if user_id not in self._user_stats.keys():
+            self._user_stats[user_id] = {
+                'correct': 0,
+                'wrong': 0,
+            }
+        if correct:
+            self._user_stats[user_id]['correct'] += 1
+        else:
+            self._user_stats[user_id]['wrong'] += 1
 
     async def get_user_stats(self, user_id: int) -> dict:
         db_stats = await self.storage.get_user_stats(user_id)
@@ -39,37 +68,118 @@ class Quizes:
         stats['percent'] = (stats['correct'] / (stats['correct'] + stats['wrong'])) * 100 if (stats['correct'] + stats['wrong']) > 0 else 0
         return stats
 
-    async def get_current_user_stats(self, user_id: int) -> dict:
+    async def get_quiz_stats(self, user_id: int) -> dict:
         cached_stats = self._user_stats.get(user_id, {'correct': 0, 'wrong': 0})
         stats = {'level': self._user_level.get(user_id, 0), 'correct': cached_stats['correct'], 'wrong': cached_stats['wrong'],'percent': 0}
         stats['percent'] = (stats['correct'] / (stats['correct'] + stats['wrong'])) * 100 if (stats['correct'] + stats['wrong']) > 0 else 0
         return stats
 
-    async def clear_user_stats(self, user_id: int):
-        await self.storage.clear_user_stats(user_id)
-        self._clear_cache(user_id)
+    @abc.abstractmethod
+    async def start_quiz(self, user_id: int) -> dict:
+        pass
+
+    @abc.abstractmethod
+    async def stop_quiz(self, user_id: int):
+        pass
+
+    @abc.abstractmethod
+    async def process_quiz(self, user_id: int, answer: str) -> dict:
+        pass
+
+
+class DateQuiz(Quiz):
+    __MONTHS = [
+        'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
+        'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'
+    ]
+
+    __WEEK_DAYS = [
+        'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo'
+    ]
+
+    __WEEK_DAYS_RU = [
+        'понедельник', 'вторник', 'среда', 'четверг', 'пятница', 'суббота', 'воскресенье'
+    ]
+
+    __MONTHS_LENGTH = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+
+    def __init__(self, storage):
+        super().__init__(storage)
 
     async def start_quiz(self, user_id: int) -> dict:
-        self._clear_cache(user_id)
-        # get user level
-        user_level = await self.storage.get_user_level(user_id)
-        if user_level is None:
-            await self.storage.insert_user(user_id)
-            user_level = 0
-        self._user_level[user_id]  = user_level
+        user_level = await self.load_user_level(user_id)
         self._current_quiz[user_id] = 1
-        self._user_stats[user_id] = {
-            'correct': 0,
-            'wrong': 0,
-        }
+        self.create_quiz_stats(user_id)
         return {'mode': 1, 'question': self._create_question(user_id, 1), 'level': user_level}
 
     async def stop_quiz(self, user_id: int):
-        # stop quiz, decrease level, clear cached data
-        await self.storage.decrease_user_level(user_id)
-        self._clear_cache(user_id)
+        # do nothing
+        pass
 
-    async def process_answer(self, user_id: int, answer: str) -> dict:
+    async def process_quiz(self, user_id: int, answer: str) -> dict:
+        # check answer
+        res, right_answer = self._check_answer(user_id, answer)
+        if res:
+            self.update_quiz_stats(user_id, True)
+        else:
+            self.update_quiz_stats(user_id, False)
+        # increase quiz number
+        self._current_quiz[user_id] += 1
+        if self._current_quiz[user_id] > 5:
+            # finish quiz
+            await self._finish_quiz(user_id)
+            return {'mode': 0, 'result': res, 'correct_answer': right_answer, 'question': None}
+        # get new question
+        question = self._create_question(user_id, 1)
+        return {'mode': 1, 'result': res, 'correct_answer': right_answer, 'question': question}
+
+    def _new_date(self):
+        week_day = random.randint(0, 6)
+        month = random.randint(0, 11)
+        day = random.randint(1, self.__MONTHS_LENGTH[month])
+        return week_day, day, month
+
+    def _create_question(self, user_id: int, mode: int = 1) -> str | tuple | None:
+        week_day, day, month = self._new_date()
+        string_day = 'primero' if day == 1 else num2words.num2words(day, lang='es')
+        self._current_answer[user_id] = f"{self.__WEEK_DAYS[week_day]}, {string_day} de {self.__MONTHS[month]}"
+        # add leading zero to day and month for quiz
+        day = str(day).zfill(2)
+        month = str(month + 1).zfill(2)
+        quiz_date = f"{self.__WEEK_DAYS_RU[week_day]}, {day}.{month}"
+        return quiz_date
+
+    def _check_answer(self, user_id: int, answer: str) -> tuple[bool, str]:
+        quiz_answer = self._current_answer.get(user_id, "")
+        answer = answer.lower().strip().replace(' ', '').replace(',', '')
+        if answer == quiz_answer.replace(' ', '').replace(',', ''):
+            return True, quiz_answer
+        return False, quiz_answer
+
+    async def _finish_quiz(self, user_id: int):
+        # date quiz finish, not update stats or user level
+        # do nothing
+        pass
+
+
+
+class NumeroQuiz(Quiz):
+
+    def __init__(self, storage):
+        super().__init__(storage)
+
+    async def start_quiz(self, user_id: int) -> dict:
+        user_level = await self.load_user_level(user_id)
+        self._current_quiz[user_id] = 1
+        self.clear_quiz(user_id)
+        self.create_quiz_stats(user_id)
+        return {'mode': 1, 'question': self._create_question(user_id, 1), 'level': user_level}
+
+    async def stop_quiz(self, user_id: int):
+        # stop quiz, decrease level because interrupted
+        await self.storage.decrease_user_level(user_id)
+
+    async def process_quiz(self, user_id: int, answer: str) -> dict:
         # check answer
         res, correct_answer = await self._check_answer(user_id, answer)
         if res:
@@ -120,11 +230,7 @@ class Quizes:
             return False, current_answer
         return False, ""
 
-    def _clear_cache(self, user_id: int):
-        if user_id in self._current_answer.keys():
-            del self._current_answer[user_id]
-        if user_id in self._current_quiz.keys():
-            del self._current_quiz[user_id]
+
 
     @staticmethod
     def _new_quiz_number(user_level: int = 0):

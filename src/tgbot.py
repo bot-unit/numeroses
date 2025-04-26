@@ -17,7 +17,7 @@ from aiogram.types import Message, BotCommand, KeyboardButton, ReplyKeyboardMark
 from aiogram.filters import Command, CommandStart, CommandObject
 
 from .storage import Storage
-from .quizes import Quizes
+from .quizes import NumeroQuiz
 
 
 MESSAGE_LEVEL = """
@@ -66,14 +66,12 @@ MESSAGE_STATS_CURRENT = """
 
 class TgBot:
 
-    __ADMIN_ID = 129507956
-
     def __init__(self, token: str, host: str, port: int, user: str, password: str, database: str):
         self._storage = Storage(host, port, user, password, database)
         self._bot = Bot(token=token, default=DefaultBotProperties())
         self._dp = Dispatcher(bot=self._bot)
-        self._quiz = Quizes(self._storage)
-        self._in_quiz = set()
+        self._quiz = NumeroQuiz(self._storage)
+        self._in_quiz = dict()
 
     @staticmethod
     def _check_chat_is_private(message: Message):
@@ -115,8 +113,6 @@ class TgBot:
         router.message.register(self.handler_stats_command, Command(commands=['stats']))
         router.message.register(self.handler_clear_command, Command(commands=['clear']))
         router.message.register(self.handler_stop_command, Command(commands=['stop']))
-        # admin commands
-        router.message.register(self.handler_users_command, Command(commands=['users']))
         # all messages
         router.message.register(self.handler_all_messages)
         return router
@@ -132,29 +128,22 @@ class TgBot:
             return
         await self._send_help(message)
 
-    async def handler_users_command(self, message: Message):
-        if not self._check_chat_is_private(message):
-            return
-        if message.from_user.id != self.__ADMIN_ID:
-            await message.answer("У вас нет прав на выполнение этой команды.")
-            return
-        users_count = await self._storage.get_users_count()
-        await message.answer(f"Количество пользователей: {users_count}")
-
     async def handler_go_command(self, message: Message):
         if not self._check_chat_is_private(message):
             return
-        if message.from_user.id in self._in_quiz:
+        user_mode = self._in_quiz.get(message.from_user.id)
+        if user_mode is not None:
             await message.answer("Вы уже находитесь в тесте.")
             return
-        self._in_quiz.add(message.from_user.id)
+        self._in_quiz[message.from_user.id] = 1
         quiz = await self._quiz.start_quiz(message.from_user.id)
         await self._send_first_question(message, quiz['mode'], quiz['question'], quiz['level'])
 
     async def handler_stats_command(self, message: Message):
         if not self._check_chat_is_private(message):
             return
-        if message.from_user.id not in self._in_quiz:
+        user_mode = self._in_quiz.get(message.from_user.id)
+        if user_mode is None:
             stats = await self._quiz.get_user_stats(message.from_user.id)
             await self._send_stats(message, stats['level'], stats['correct'], stats['wrong'], stats['percent'])
         else:
@@ -164,7 +153,8 @@ class TgBot:
     async def handler_clear_command(self, message: Message):
         if not self._check_chat_is_private(message):
             return
-        if message.from_user.id in self._in_quiz:
+        user_mode = self._in_quiz.get(message.from_user.id)
+        if user_mode is not None:
             await message.answer("Вы находитесь в тесте. Чтобы очистить статистику, сначала завершите тест.")
             return
         await self._quiz.clear_user_stats(message.from_user.id)
@@ -173,23 +163,25 @@ class TgBot:
     async def handler_stop_command(self, message: Message):
         if not self._check_chat_is_private(message):
             return
-        if message.from_user.id not in self._in_quiz:
+        user_mode = self._in_quiz.get(message.from_user.id)
+        if user_mode is None:
             return
         await self._quiz.stop_quiz(message.from_user.id)
-        self._in_quiz.remove(message.from_user.id)
+        self._in_quiz[message.from_user.id] = None
         await message.answer("Тест остановлен. Чтобы начать заново, введите /go", reply_markup=ReplyKeyboardRemove())
 
     async def handler_all_messages(self, message: Message):
         if not self._check_chat_is_private(message):
             return
-        if message.from_user.id not in self._in_quiz:
+        user_mode = self._in_quiz.get(message.from_user.id)
+        if user_mode is None:
             return
         answer = message.text.strip().lower()
         if len(answer) == 0:
             return
         quiz = await self._quiz.process_answer(message.from_user.id, answer)
         if quiz['mode'] == 0:
-            self._in_quiz.remove(message.from_user.id)
+            self._in_quiz[message.from_user.id] = None
             stats = await self._quiz.get_current_user_stats(message.from_user.id)
             await self._send_finish_result(message, quiz['result'], quiz['correct_answer'], stats['level'], stats['correct'], stats['wrong'], stats['percent'])
         else:
