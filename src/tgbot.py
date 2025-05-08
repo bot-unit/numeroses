@@ -40,6 +40,22 @@ MESSAGE_QUESTION_4 = """
     Напишите заданное число прописью: <b>{0}</b>
     """
 
+MESSAGE_QUESTION_5 = """
+    Выберите правильное порядковое числительное: <b>{0}</b>
+    """
+
+MESSAGE_QUESTION_6 = """
+    Выберите правильное порядковое числительное: <b>{0}</b>
+    """
+
+MESSAGE_QUESTION_7 = """
+    Напишите порядковое числительное цифрами: <b>{0}</b>
+    """
+
+MESSAGE_QUESTION_8 = """
+    Напишите порядковое числительное прописью: <b>{0}</b>
+    """
+
 MESSAGE_DATE_EXAMPLE = """
     Напишите дату согласно примерам:
     Вопрос: <b>Понедельник, 01.01</b>
@@ -223,6 +239,9 @@ class TgBot:
             return
         self._in_quiz[message.from_user.id] = 1
         quiz = await self._numeros.start_quiz(message.from_user.id)
+        if quiz['mode'] == 0:
+            await message.answer("Ошибка сервера. Перезапустите тест.")
+            return
         await self._numeros_send_first_question(message, quiz['mode'], quiz['question'], quiz['level'])
 
     async def handler_dates_command(self, message: Message):
@@ -265,7 +284,7 @@ class TgBot:
                     message, quiz['result'], quiz['correct_answer'],
                     stats['level'], stats['correct'], stats['wrong'], stats['percent'])
             else:
-                await self._numeros_send_question(
+                await self._numeros_send_question_with_result(
                     message, quiz['result'], quiz['correct_answer'], quiz['mode'], quiz['question'])
         elif quiz_mode == 2:
             quiz = await self._dates.process_quiz(message.from_user.id, answer)
@@ -276,7 +295,7 @@ class TgBot:
                     message, quiz['result'], quiz['correct_answer'],
                     stats['level'], stats['correct'], stats['wrong'], stats['percent'])
             else:
-                await self._dates_send_question(
+                await self._dates_send_question_with_result(
                     message, quiz['result'], quiz['correct_answer'], quiz['mode'], quiz['question'])
         elif quiz_mode == 3:
             quiz = await self._times.process_quiz(message.from_user.id, answer)
@@ -287,7 +306,7 @@ class TgBot:
                     message, quiz['result'], quiz['correct_answer'],
                     stats['level'], stats['correct'], stats['wrong'], stats['percent'])
             else:
-                await self._times_send_question(
+                await self._times_send_question_with_result(
                     message, quiz['result'], quiz['correct_answer'], quiz['question'])
         pass
 
@@ -315,64 +334,26 @@ class TgBot:
     async def _send_help(message: Message):
         await message.answer(MESSAGE_HELP, parse_mode=ParseMode.HTML)
 
-    @staticmethod
-    async def _numeros_send_first_question(message: Message, mode: int, question: str | tuple, level: int):
+    async def _numeros_send_first_question(self, message: Message, mode: int, question: str | list, level: int):
         msg = MESSAGE_LEVEL.format(level)
-        if mode == 1:
-            variants = list(question[1:])
-            random.shuffle(variants)
-            kb = [
-                [
-                    KeyboardButton(text=variants[0]),
-                    KeyboardButton(text=variants[1]),
-                ],
-                [
-                    KeyboardButton(text=variants[2]),
-                    KeyboardButton(text=variants[3]),
-                ]
-            ]
-            keyboard = ReplyKeyboardMarkup(
-                keyboard=kb,
-                resize_keyboard=True,
-            )
-            await message.answer(msg + MESSAGE_QUESTION_1.format(question[0]), parse_mode=ParseMode.HTML, reply_markup=keyboard)
-        elif mode == 2:
-            variants = list(question[1:])
-            random.shuffle(variants)
-            kb = [
-                [
-                    KeyboardButton(text=variants[0])
-                ],
-                [
-                    KeyboardButton(text=variants[1]),
-                ],
-                [
-                    KeyboardButton(text=variants[2]),
-                ],
-                [
-                    KeyboardButton(text=variants[3]),
-                ]
-            ]
-            keyboard = ReplyKeyboardMarkup(
-                keyboard=kb,
-                resize_keyboard=True,
-            )
-            await message.answer(msg + MESSAGE_QUESTION_2.format(question[0]), parse_mode=ParseMode.HTML, reply_markup=keyboard)
-        elif mode == 3:
-            await message.answer(msg + MESSAGE_QUESTION_3.format(question), parse_mode=ParseMode.HTML, reply_markup=ReplyKeyboardRemove())
-        elif mode == 4:
-            await message.answer(msg + MESSAGE_QUESTION_4.format(question), parse_mode=ParseMode.HTML, reply_markup=ReplyKeyboardRemove())
+        await self._numeros_send_question(message, msg, mode, question)
         pass
 
-    @staticmethod
-    async def _numeros_send_question(message: Message, result: bool, answer: str, mode: int, question: str | tuple):
+    async def _numeros_send_question_with_result(self, message: Message, result: bool, answer: str, mode: int, question: str | list):
         if result:
             msg = MESSAGE_CORRECT
         else:
             msg = MESSAGE_INCORRECT.format(answer)
+        await self._numeros_send_question(message, msg, mode, question)
+
+    @staticmethod
+    async def _numeros_send_question(message: Message, pre_text: str, mode: int, question: str | list):
         if mode == 1:
-            variants = list(question[1:])
+            variants = list(question[1])
             random.shuffle(variants)
+            if len(variants) < 4:
+                await message.answer("Ошибка сервера. Перезапустите тест.")
+                return
             kb = [
                 [
                     KeyboardButton(text=variants[0]),
@@ -387,10 +368,14 @@ class TgBot:
                 keyboard=kb,
                 resize_keyboard=True,
             )
-            await message.answer(msg + MESSAGE_QUESTION_1.format(question[0]), parse_mode=ParseMode.HTML, reply_markup=keyboard)
+            msg = pre_text + MESSAGE_QUESTION_1.format(question[0])
+            await message.answer(msg, parse_mode=ParseMode.HTML, reply_markup=keyboard)
         elif mode == 2:
-            variants = list(question[1:])
+            variants = list(question[1])
             random.shuffle(variants)
+            if len(variants) < 4:
+                await message.answer("Ошибка сервера. Перезапустите тест.")
+                return
             kb = [
                 [
                     KeyboardButton(text=variants[0])
@@ -409,73 +394,119 @@ class TgBot:
                 keyboard=kb,
                 resize_keyboard=True,
             )
-            await message.answer(msg + MESSAGE_QUESTION_2.format(question[0]), parse_mode=ParseMode.HTML, reply_markup=keyboard)
+            msg = pre_text + MESSAGE_QUESTION_2.format(question[0])
+            await message.answer(msg, parse_mode=ParseMode.HTML, reply_markup=keyboard)
         elif mode == 3:
-            await message.answer(msg + MESSAGE_QUESTION_3.format(question), parse_mode=ParseMode.HTML, reply_markup=ReplyKeyboardRemove())
+            msg = pre_text + MESSAGE_QUESTION_3.format(question[0])
+            await message.answer(msg, parse_mode=ParseMode.HTML, reply_markup=ReplyKeyboardRemove())
         elif mode == 4:
-            await message.answer(msg + MESSAGE_QUESTION_4.format(question), parse_mode=ParseMode.HTML, reply_markup=ReplyKeyboardRemove())
+            msg = pre_text + MESSAGE_QUESTION_4.format(question[0])
+            await message.answer(msg, parse_mode=ParseMode.HTML, reply_markup=ReplyKeyboardRemove())
+        elif mode == 5:
+            variants = list(question[1])
+            random.shuffle(variants)
+            if len(variants) < 3:
+                await message.answer("Ошибка сервера. Перезапустите тест.")
+                return
+            kb = [
+                [
+                    KeyboardButton(text=variants[0])
+                ],
+                [
+                    KeyboardButton(text=variants[1]),
+                ],
+                [
+                    KeyboardButton(text=variants[2]),
+                ]
+            ]
+            keyboard = ReplyKeyboardMarkup(
+                keyboard=kb,
+                resize_keyboard=True,
+            )
+            msg = pre_text + MESSAGE_QUESTION_5.format(question[0])
+            await message.answer(msg, parse_mode=ParseMode.HTML, reply_markup=keyboard)
+        elif mode == 6:
+            variants = list(question[1])
+            random.shuffle(variants)
+            if len(variants) < 3:
+                await message.answer("Ошибка сервера. Перезапустите тест.", reply_markup=ReplyKeyboardRemove())
+                return
+            kb = [
+                [
+                    KeyboardButton(text=variants[0])
+                ],
+                [
+                    KeyboardButton(text=variants[1]),
+                ],
+                [
+                    KeyboardButton(text=variants[2]),
+                ]
+            ]
+            keyboard = ReplyKeyboardMarkup(
+                keyboard=kb,
+                resize_keyboard=True,
+            )
+            msg = pre_text + MESSAGE_QUESTION_6.format(question[0])
+            await message.answer(msg, parse_mode=ParseMode.HTML, reply_markup=keyboard)
+        elif mode == 7:
+            msg = pre_text + MESSAGE_QUESTION_7.format(question[0])
+            await message.answer(msg, parse_mode=ParseMode.HTML, reply_markup=ReplyKeyboardRemove())
+        elif mode == 8:
+            msg = pre_text + MESSAGE_QUESTION_8.format(question[0])
+            await message.answer(msg, parse_mode=ParseMode.HTML, reply_markup=ReplyKeyboardRemove())
+        elif mode == 9:
+            await message.answer("Не могу отпраивть аудио, попробуйте позже.", reply_markup=ReplyKeyboardRemove())
+        else:
+            await message.answer("Ошибка сервера. Перезапустите тест.", reply_markup=ReplyKeyboardRemove())
         pass
 
-    @staticmethod
-    async def _dates_send_first_question(message: Message, question: str):
+
+    async def _dates_send_first_question(self, message: Message, question: str):
         await message.answer(MESSAGE_DATE_EXAMPLE, parse_mode=ParseMode.HTML)
-        await message.answer(MESSAGE_DATE_QUESTION.format(question), parse_mode=ParseMode.HTML, reply_markup=ReplyKeyboardRemove())
+        await self._dates_send_question(message, MESSAGE_DATE_QUESTION.format(question))
 
-    @staticmethod
-    async def _dates_send_question(message: Message, result: bool, answer: str, mode: int, question: str):
+    async def _dates_send_question_with_result(self, message: Message, result: bool, answer: str, mode: int, question: str):
         if result:
             msg = MESSAGE_CORRECT
         else:
             msg = MESSAGE_INCORRECT.format(answer)
-        await message.answer(msg + MESSAGE_DATE_QUESTION.format(question), parse_mode=ParseMode.HTML, reply_markup=ReplyKeyboardRemove())
+        msg += MESSAGE_DATE_QUESTION.format(question)
+        await self._dates_send_question(message, msg)
 
     @staticmethod
-    async def _times_send_first_question(message: Message, question: tuple):
-        variants = question[1]
-        random.shuffle(variants)
+    async def _dates_send_question(message: Message, text: str):
+        await message.answer(text, parse_mode=ParseMode.HTML, reply_markup=ReplyKeyboardRemove())
+
+    async def _times_send_first_question(self, message: Message, question: tuple):
+        await self._times_send_question(message, MESSAGE_TIME_QUESTION.format(question[0]), question[1])
+
+    async def _times_send_question_with_result(self, message: Message, result: bool, answer: str, question: tuple):
+        if result:
+            msg = MESSAGE_CORRECT
+        else:
+            msg = MESSAGE_INCORRECT.format(answer)
+        await self._times_send_question(message, msg + MESSAGE_TIME_QUESTION.format(question[0]), question[1])
+
+    @staticmethod
+    async def _times_send_question(message: Message, text: str, answers: list):
+        random.shuffle(answers)
         kb = [
             [
-                KeyboardButton(text=variants[0]),
-                KeyboardButton(text=variants[1]),
-                KeyboardButton(text=variants[2]),
+                KeyboardButton(text=answers[0]),
+                KeyboardButton(text=answers[1]),
+                KeyboardButton(text=answers[2]),
             ],
             [
-                KeyboardButton(text=variants[3]),
-                KeyboardButton(text=variants[4]),
-                KeyboardButton(text=variants[5]),
+                KeyboardButton(text=answers[3]),
+                KeyboardButton(text=answers[4]),
+                KeyboardButton(text=answers[5]),
             ]
         ]
         keyword = ReplyKeyboardMarkup(
             keyboard=kb,
             resize_keyboard=True,
         )
-        await message.answer(MESSAGE_TIME_QUESTION.format(question[0]), parse_mode=ParseMode.HTML, reply_markup=keyword)
-
-    @staticmethod
-    async def _times_send_question(message: Message, result: bool, answer: str, question: tuple):
-        if result:
-            msg = MESSAGE_CORRECT
-        else:
-            msg = MESSAGE_INCORRECT.format(answer)
-        variants = question[1]
-        random.shuffle(variants)
-        kb = [
-            [
-                KeyboardButton(text=variants[0]),
-                KeyboardButton(text=variants[1]),
-                KeyboardButton(text=variants[2]),
-            ],
-            [
-                KeyboardButton(text=variants[3]),
-                KeyboardButton(text=variants[4]),
-                KeyboardButton(text=variants[5]),
-            ]
-        ]
-        keyword = ReplyKeyboardMarkup(
-            keyboard=kb,
-            resize_keyboard=True,
-        )
-        await message.answer(msg + MESSAGE_TIME_QUESTION.format(question[0]), parse_mode=ParseMode.HTML, reply_markup=keyword)
+        await message.answer(text, parse_mode=ParseMode.HTML, reply_markup=keyword)
 
     @staticmethod
     async def _send_finish_result(message: Message, result: bool, answer: str, level, correct, wrong, percent):

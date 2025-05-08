@@ -192,7 +192,7 @@ class TimeQuiz(Quiz):
         '01': 'de la madrugada',
         '02': 'de la madrugada',
         '03': 'de la madrugada',
-        '04': 'de la madrugada',
+        '04': 'de la mañana',
         '05': 'de la mañana',
         '06': 'de la mañana',
         '07': 'de la mañana',
@@ -219,8 +219,8 @@ class TimeQuiz(Quiz):
         '01': 'de la madrugada',
         '02': 'de la madrugada',
         '03': 'de la madrugada',
-        '04': 'de la madrugada',
-        '05': 'de la madrugada',
+        '04': 'de la mañana',
+        '05': 'de la mañana',
         '06': 'de la mañana',
         '07': 'de la mañana',
         '08': 'de la mañana',
@@ -356,12 +356,18 @@ class NumeroQuiz(Quiz):
 
     def __init__(self, storage):
         super().__init__(storage)
+        from src.gens import get_quiz_numbers, get_quiz_mode
+        self._new_quiz_number = get_quiz_numbers
+        self._get_quiz_mode = get_quiz_mode
 
     async def start_quiz(self, user_id: int) -> dict:
         user_level = await self.load_user_level(user_id)
-        self._current_quiz[user_id] = 1
         self.create_quiz_stats(user_id)
-        return {'mode': 1, 'question': self._create_question(user_id, 1), 'level': user_level}
+        self._current_quiz[user_id] = 1
+        mode, *question = self._create_question(user_id)
+        if question is None or mode == 0:
+            return {'mode': 0, 'result': 0, 'correct_answer': 0, 'question': None}
+        return {'mode': mode, 'question': question, 'level': user_level}
 
     async def stop_quiz(self, user_id: int):
         # stop quiz, decrease level because interrupted
@@ -376,121 +382,82 @@ class NumeroQuiz(Quiz):
             self.update_quiz_stats(user_id, False)
         # increase quiz number
         self._current_quiz[user_id] += 1
-        # get new current mode
-        mode = self._get_quiz_mode(self._user_level[user_id], self._current_quiz[user_id])
-        if mode == 0:
+        # get new question
+        mode, *question = self._create_question(user_id)
+        if question is None or mode == 0:
             # finish quiz
             await self._finish_quiz(user_id)
             return {'mode': 0, 'result': res, 'correct_answer': right_answer, 'question': None}
-        # get new question
-        question = self._create_question(user_id, mode)
         return {'mode': mode, 'result': res, 'correct_answer': right_answer, 'question': question}
 
-    @staticmethod
-    def _get_quiz_mode(user_level: int = 0, quiz_number: int = 1):
-        """
-        Modes:
-        0 -- finish
-        1 -- words to number, choose mode
-        2 -- number to words, choose mode
-        3 -- words to number, write mode
-        4 -- number to words, write mode
-        """
-        # for begginers
-        if user_level <= 4:
-            if quiz_number <= (user_level + 1):
-                return 1
-            elif quiz_number <= (user_level + 1) * 2:
-                return 2
-            elif quiz_number <= (user_level + 1) * 3:
-                return 3
-            elif quiz_number <= (user_level + 1) * 4:
-                return 4
-            return 0  # finish
-        # for level 5, 6, 7
-        elif user_level <= 7:
-            if quiz_number <= 5:
-                return 1
-            elif quiz_number <= 10:
-                return 2
-            elif quiz_number <= 15:
-                return 3
-            elif quiz_number <= 20:
-                return 4
-            return 0  # finish
-        # for level 8, 9, 10
-        elif user_level <= 10:
-            if quiz_number <= 10:
-                return 3
-            elif quiz_number <= 20:
-                return 4
-            return 0  # finish
-        # for level 11 and above
-        if quiz_number <= user_level:
-            return 3
-        elif quiz_number <= user_level * 2:
-            return 4
-        return 0  # finish
-
-    @staticmethod
-    def _new_quiz_number(user_level: int = 0):
-        if user_level <= 1:
-            return random.randint(1, 20)
-        elif user_level <= 4:
-            return random.randint(1, 100)
-        elif user_level <= 7:
-            return random.randint(1, 1000)
-        return random.randint(1001, 9999)
-
-    def _create_question(self, user_id: int, mode: int = 1) -> str | tuple | None:
+    def _create_question(self, user_id: int) -> tuple:
         """
         Modes:
         1 -- words to number, choose mode
         2 -- number to words, choose mode
         3 -- words to number, write mode
         4 -- number to words, write mode
+        5 -- ordinal words to ru number, choose mode
+        6 -- ordinal ru number to words, choose mode
+        7 -- ordinal words to ru number, write mode
+        8 -- ordinal ru number to words, write mode
         """
         user_level = self._user_level.get(user_id, 0)
-        number = self._new_quiz_number(user_level)
-        self._current_answer[user_id] = number
+        current_quiz = self._current_quiz.get(user_id, 0)
+        mode = self._get_quiz_mode(self._user_level[user_id], current_quiz)
+        qn = self._new_quiz_number(user_level, mode)
+        if qn is None:
+            return 0, None
         if mode == 1:
-            question = num2words.num2words(number, lang='es')
-            n1 = number
-            n2 = number + 1
-            if number == 1:
-                n3 = number + 3
-            else:
-                n3 = number - 1
-            n4 = number + random.randint(2, 5)
-            if number > 100:
-                n2 = number - random.randint(1, 3)
-                n3 = number + random.randint(10, 20)
-                n4 = number + random.randint(1, 10)
-            return question, str(n1), str(n2), str(n3), str(n4)
+            if not isinstance(qn, list):
+                return 0, None
+            x = random.choice(qn)
+            self._current_answer[user_id] = x
+            question = num2words.num2words(x, lang='es')
+            return 1, question, [str(y) for y in qn]
         elif mode == 2:
-            n1 = num2words.num2words(number, lang='es')
-            n2 = num2words.num2words(number + 1, lang='es')
-            if number == 1:
-                n3 = num2words.num2words(number + 3, lang='es')
-            else:
-                n3 = num2words.num2words(number - 1, lang='es')
-            n4 = num2words.num2words(number + 2, lang='es')
-            if number > 200:
-                n2 = num2words.num2words(number - random.randint(100, 200), lang='es')
-                n3 = num2words.num2words(number + random.randint(10, 50), lang='es')
-                n4 = num2words.num2words(number + random.randint(50, 150), lang='es')
-            return number, n1, n2, n3, n4
+            if not isinstance(qn, list):
+                return 0, None
+            x = random.choice(qn)
+            self._current_answer[user_id] = x
+            question = str(x)
+            return 2, question, [num2words.num2words(y, lang='es') for y in qn]
         elif mode == 3:
-            return num2words.num2words(number, lang='es')
+            self._current_answer[user_id] = qn
+            return 3, num2words.num2words(qn, lang='es')
         elif mode == 4:
-            return str(number)
-        return None
+            self._current_answer[user_id] = qn
+            return 4, str(qn)
+        elif mode == 5:
+            if not isinstance(qn, list):
+                return 0, None
+            x = random.choice(qn)
+            self._current_answer[user_id] = x
+            question = num2words.num2words(x, lang='es', to='ordinal')
+            return 5, question, [num2words.num2words(y, lang='ru', to='ordinal') for y in qn]
+        elif mode == 6:
+            if not isinstance(qn, list):
+                return 0, None
+            x = random.choice(qn)
+            self._current_answer[user_id] = x
+            question = num2words.num2words(x, lang='ru', to='ordinal')
+            return 6, question, [num2words.num2words(y, lang='es', to='ordinal') for y in qn]
+        elif mode == 7:
+            self._current_answer[user_id] = qn
+            return 7, num2words.num2words(qn, lang='es', to='ordinal')
+        elif mode == 8:
+            self._current_answer[user_id] = qn
+            return 8, num2words.num2words(qn, lang='ru', to='ordinal')
+        elif mode == 9:
+            self._current_answer[user_id] = qn
+            return 9, qn  # change this when audio is implemented
+        return 0, None
 
     def _check_answer(self, user_id: int, answer: str) -> tuple[bool, str]:
         question_number = self._current_quiz.get(user_id, 0)
         user_level = self._user_level.get(user_id, 0)
         current_mode = self._get_quiz_mode(user_level, question_number)
-        if current_mode == 1 or current_mode == 3:
+        if current_mode == 1 or current_mode == 3 or current_mode == 7 or current_mode == 9:
             current_answer = self._current_answer.get(user_id, 0)
             try:
                 answer = int(answer)
@@ -501,6 +468,16 @@ class NumeroQuiz(Quiz):
             return False, str(current_answer)
         elif current_mode == 2 or current_mode == 4:
             current_answer = num2words.num2words(self._current_answer.get(user_id, 0), lang='es')
+            if answer == current_answer:
+                return True, current_answer
+            return False, current_answer
+        elif current_mode == 5:
+            current_answer = num2words.num2words(self._current_answer.get(user_id, 0), lang='ru', to='ordinal')
+            if answer == current_answer:
+                return True, current_answer
+            return False, current_answer
+        elif current_mode == 6 or current_mode == 8:
+            current_answer = num2words.num2words(self._current_answer.get(user_id, 0), lang='es', to='ordinal')
             if answer == current_answer:
                 return True, current_answer
             return False, current_answer
