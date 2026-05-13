@@ -173,6 +173,7 @@ class TgBot:
         router.message.register(self.handler_stats_command, Command(commands=['stats']))
         router.message.register(self.handler_clear_command, Command(commands=['clear']))
         router.message.register(self.handler_stop_command, Command(commands=['stop']))
+        router.message.register(self.handler_id_command, Command(commands=['id']))
         # all messages
         router.message.register(self.handler_all_messages)
         return router
@@ -182,6 +183,11 @@ class TgBot:
             return
         await self._numeros.register_user(message.from_user.id)
         await self._send_help(message)
+
+    async def handler_id_command(self, message: Message):
+        if not self._check_chat_is_private(message):
+            return
+        await message.answer(f"Ваш ID: {message.from_user.id}", reply_markup=ReplyKeyboardRemove())
 
     async def handler_help_command(self, message: Message):
         if not self._check_chat_is_private(message):
@@ -271,6 +277,8 @@ class TgBot:
             return
         quiz_mode = self._in_quiz.get(message.from_user.id, 0)
         if quiz_mode == 0:
+            return
+        if message.text is None:
             return
         answer = message.text.strip().lower()
         if len(answer) == 0:
