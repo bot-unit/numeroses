@@ -1,5 +1,7 @@
+# syntax=docker/dockerfile:1
 # Use the official Python 3.13 image from the Docker Hub
-FROM python@sha256:93e583f243454e6e9e4588ca2c2662206ad961659863277afcdb96801647d640
+# https://hub.docker.com/hardened-images/catalog/dhi/python
+FROM python@sha256:e81548ac35b07a3bd4805f275107592ef458b1e893c0e04d45aedaa19416cca5
 
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
