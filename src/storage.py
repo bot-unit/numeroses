@@ -6,7 +6,8 @@
     
 """
 
-import asyncpg
+import psycopg
+from psycopg_pool import AsyncConnectionPool
 
 
 class StorageDriver:
@@ -15,23 +16,32 @@ class StorageDriver:
         self._pool = None
 
     async def connect(self):
-        self._pool = await asyncpg.create_pool(self._dsn)
+        self._pool = AsyncConnectionPool(
+            self._dsn,
+            min_size=5,
+            max_size=20,
+            timeout=30.0
+        )
+        await self._pool.open()
 
     async def disconnect(self):
-        await self._pool.close()
+        if self._pool:
+            await self._pool.close()
 
     async def execute(self, query: str, *args):
-        async with self._pool.acquire() as conn:
+        async with self._pool.connection() as conn:
             async with conn.transaction():
                 await conn.execute(query, *args)
 
     async def fetchone(self, query: str, *args):
-        async with self._pool.acquire() as conn:
-            return await conn.fetchrow(query, *args)
+        async with self._pool.connection() as conn:
+            cursor = await conn.execute(query, *args)
+            return await cursor.fetchone()
 
     async def fetchall(self, query: str, *args):
-        async with self._pool.acquire() as conn:
-            return await conn.fetch(query, *args)
+        async with self._pool.connection() as conn:
+            cursor = await conn.execute(query, *args)
+            return await cursor.fetchall()
 
     async def insert(self, query: str, *args):
         await self.execute(query, *args)
@@ -69,10 +79,10 @@ class Storage:
         try:
             query = f"INSERT INTO {self.__TABLE} (user_id) VALUES ($1)"
             await self._driver.insert(query, user_id)
-        except asyncpg.PostgresError:
+        except psycopg.errors.UniqueViolation:
             pass
 
-    async def get_user_level(self, user_id: int) -> int:
+    async def get_user_level(self, user_id: int) -> int | None:
         query = f"SELECT level FROM {self.__TABLE} WHERE user_id = $1"
         res = await self._driver.fetchone(query, user_id)
         return res[0] if res else None

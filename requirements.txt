@@ -1,4 +1,4 @@
 aiohttp # HTTP client/server
 aiogram # Telegram bot framework
-asyncpg # PostgreSQL client
-num2words
+psycopg[binary,pool] # PostgreSQL adapter with binary and connection pooling support
+num2words # Convert numbers to words

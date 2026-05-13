@@ -1,5 +1,5 @@
-# Use the official Python 3.11 image from the Docker Hub
-FROM python@sha256:370c586a6ffc8c619e6d652f81c094b34b14b8f2fb9251f092de23f16e299b78
+# Use the official Python 3.13 image from the Docker Hub
+FROM python@sha256:93e583f243454e6e9e4588ca2c2662206ad961659863277afcdb96801647d640
 
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
