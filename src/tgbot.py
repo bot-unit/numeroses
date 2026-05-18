@@ -98,6 +98,11 @@ MESSAGE_STATS_CURRENT = """
     Процент правильных ответов: <i>{3:.2f}%</i>
     """
 
+MESSAGE_PHRASE_RECEIVED = """
+    Фраза получена и сохранена для дальнейшей обработки.
+    Спасибо за ваш вклад в улучшение бота!
+    """
+
 MESSAGE_HELP = """
     <b>Испанские числительные</b>
     Бот позволяет вам тренировать испанские числительные.
@@ -174,6 +179,7 @@ class TgBot:
         router.message.register(self.handler_clear_command, Command(commands=['clear']))
         router.message.register(self.handler_stop_command, Command(commands=['stop']))
         router.message.register(self.handler_id_command, Command(commands=['id']))
+        router.message.register(self.handler_phrase_command, Command(commands=['phrase']))
         # all messages
         router.message.register(self.handler_all_messages)
         return router
@@ -271,6 +277,15 @@ class TgBot:
         self._in_quiz[message.from_user.id] = 3
         quiz = await self._times.start_quiz(message.from_user.id)
         await self._times_send_first_question(message, quiz['question'])
+
+    async def handler_phrase_command(self, message: Message):
+        if not self._check_chat_is_private(message):
+            return
+        if len(message.text) <= 12:
+            return
+        phrase = message.text[7:].strip()  # remove /phrase command (7 characters)
+        await self._storage.add_phrase(phrase, message.from_user.id)
+        await message.answer(MESSAGE_PHRASE_RECEIVED, reply_markup=ReplyKeyboardRemove())
 
     async def handler_all_messages(self, message: Message):
         if not self._check_chat_is_private(message):

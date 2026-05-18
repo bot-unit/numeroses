@@ -61,6 +61,7 @@ class StorageDriver:
 
 class Storage:
     __TABLE = "es_numeros"
+    __PHRASES_TABLE = "es_phrases"
 
     def __init__(self, host: str, port: int, user: str, password: str, database: str):
         self._driver: StorageDriver = StorageDriver(f"postgresql://{user}:{password}@{host}:{port}/{database}")
@@ -113,3 +114,7 @@ class Storage:
     async def clear_user_stats(self, user_id: int):
         query = f"UPDATE {self.__TABLE} SET correct = 0, wrong = 0, level = 0 WHERE user_id = %s"
         await self._driver.delete(query, user_id)
+
+    async def add_phrase(self, phrase: str, user_id: int):
+        query = f"INSERT INTO {self.__PHRASES_TABLE} (phrase, user_id) VALUES (%s, %s)"
+        await self._driver.insert(query, phrase, user_id)
